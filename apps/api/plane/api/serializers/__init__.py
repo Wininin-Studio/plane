@@ -16,6 +16,12 @@ from .page import (
     WorkItemPageAPISerializer,
     WorkItemPageCreateAPISerializer,
 )
+from .feature import (
+    ProjectFeatureSerializer,
+    ProjectFeatureUpdateSerializer,
+    WorkspaceFeatureSerializer,
+    WorkspaceFeatureUpdateSerializer,
+)
 from .issue import (
     IssueSerializer,
     LabelCreateUpdateSerializer,

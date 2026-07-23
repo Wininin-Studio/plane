@@ -16,6 +16,7 @@ from .page import (
     WorkItemPageDetailAPIEndpoint,
     WorkItemPageListCreateAPIEndpoint,
 )
+from .feature import ProjectFeatureAPIEndpoint, WorkspaceFeatureAPIEndpoint
 
 from .state import (
     StateListCreateAPIEndpoint,

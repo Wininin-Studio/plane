@@ -47,6 +47,7 @@ from plane.api.serializers import (
     IssueCommentSerializer,
     IssueLinkSerializer,
     IssueRelationCreateSerializer,
+    IssueRelationRemoveSerializer,
     IssueRelationResponseSerializer,
     IssueRelationSerializer,
     IssueSerializer,
@@ -2540,3 +2541,91 @@ class IssueRelationListCreateAPIEndpoint(BaseAPIView):
             serializer_class(refetched_relations, many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class IssueRelationRemoveAPIEndpoint(BaseAPIView):
+    """Issue Relation Remove Endpoint"""
+
+    serializer_class = IssueRelationRemoveSerializer
+    model = IssueRelation
+    permission_classes = [ProjectEntityPermission]
+
+    @work_item_relation_docs(
+        operation_id="remove_work_item_relation",
+        summary="Remove work item relation",
+        description="Remove exactly one relationship type and direction between two work items.",
+        parameters=[ISSUE_ID_PARAMETER],
+        request=IssueRelationRemoveSerializer,
+        responses={
+            204: OpenApiResponse(description="Work item relation removed successfully"),
+            400: INVALID_REQUEST_RESPONSE,
+            404: ISSUE_NOT_FOUND_RESPONSE,
+        },
+    )
+    def post(self, request, slug, project_id, issue_id):
+        """Remove one exact work item relation."""
+        serializer = IssueRelationRemoveSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        related_issue_id = serializer.validated_data["related_issue"]
+        relation_type = serializer.validated_data["relation_type"]
+        actual_relation = get_actual_relation(relation_type)
+        is_reverse = relation_type in ["blocking", "start_after", "finish_after"]
+
+        if not Issue.objects.filter(
+            id=issue_id,
+            project_id=project_id,
+            workspace__slug=slug,
+        ).exists():
+            return Response(
+                {"detail": "Work item relation not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        relations = IssueRelation.objects.filter(
+            workspace__slug=slug,
+            relation_type=actual_relation,
+        )
+        if relation_type in ["duplicate", "relates_to"]:
+            relations = relations.filter(
+                Q(issue_id=issue_id, related_issue_id=related_issue_id)
+                | Q(issue_id=related_issue_id, related_issue_id=issue_id)
+            )
+        else:
+            relations = relations.filter(
+                issue_id=related_issue_id if is_reverse else issue_id,
+                related_issue_id=issue_id if is_reverse else related_issue_id,
+            )
+        relation = relations.select_related(
+            "issue__state",
+            "related_issue__state",
+        ).first()
+        if relation is None:
+            return Response(
+                {"detail": "Work item relation not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer_class = RelatedIssueSerializer if is_reverse else IssueRelationSerializer
+        current_instance = json.dumps(serializer_class(relation).data, cls=DjangoJSONEncoder)
+        relation.delete()
+
+        issue_activity.delay(
+            type="issue_relation.activity.deleted",
+            requested_data=json.dumps(
+                {
+                    "related_issue": related_issue_id,
+                    "relation_type": relation_type,
+                },
+                cls=DjangoJSONEncoder,
+            ),
+            actor_id=str(request.user.id),
+            issue_id=str(issue_id),
+            project_id=str(project_id),
+            current_instance=current_instance,
+            epoch=int(timezone.now().timestamp()),
+            notification=True,
+            origin=base_host(request=request, is_app=True),
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)

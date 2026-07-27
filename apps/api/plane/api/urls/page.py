@@ -22,7 +22,7 @@ urlpatterns = [
     ),
     path(
         "workspaces/<str:slug>/pages/<uuid:page_id>/",
-        WorkspacePageDetailAPIEndpoint.as_view(http_method_names=["get"]),
+        WorkspacePageDetailAPIEndpoint.as_view(http_method_names=["get", "patch"]),
         name="workspace-page-detail",
     ),
     path(
@@ -32,7 +32,7 @@ urlpatterns = [
     ),
     path(
         "workspaces/<str:slug>/projects/<uuid:project_id>/pages/<uuid:page_id>/",
-        ProjectPageDetailAPIEndpoint.as_view(http_method_names=["get"]),
+        ProjectPageDetailAPIEndpoint.as_view(http_method_names=["get", "patch"]),
         name="project-page-detail",
     ),
     path(

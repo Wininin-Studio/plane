@@ -10,6 +10,12 @@ from .project import (
     ProjectCreateSerializer,
     ProjectUpdateSerializer,
 )
+from .page import (
+    PageAPISerializer,
+    PageCreateAPISerializer,
+    WorkItemPageAPISerializer,
+    WorkItemPageCreateAPISerializer,
+)
 from .issue import (
     IssueSerializer,
     LabelCreateUpdateSerializer,

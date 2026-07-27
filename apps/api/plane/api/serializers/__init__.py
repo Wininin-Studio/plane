@@ -13,6 +13,7 @@ from .project import (
 from .page import (
     PageAPISerializer,
     PageCreateAPISerializer,
+    PageUpdateAPISerializer,
     WorkItemPageAPISerializer,
     WorkItemPageCreateAPISerializer,
 )

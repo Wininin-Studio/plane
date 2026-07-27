@@ -91,6 +91,23 @@ class PageCreateAPISerializer(BaseSerializer):
         return sanitized_html if sanitized_html is not None else value
 
 
+class PageUpdateAPISerializer(PageCreateAPISerializer):
+    description_html = serializers.CharField(required=False, allow_blank=True)
+
+    class Meta(PageCreateAPISerializer.Meta):
+        fields = [
+            "name",
+            "description_html",
+            "access",
+            "color",
+            "archived_at",
+            "view_props",
+            "logo_props",
+            "external_id",
+            "external_source",
+        ]
+
+
 class WorkItemPageCreateAPISerializer(serializers.Serializer):
     page_id = serializers.UUIDField()
 

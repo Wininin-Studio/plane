@@ -47,6 +47,7 @@ from plane.api.serializers import (
     IssueCommentSerializer,
     IssueLinkSerializer,
     IssueRelationCreateSerializer,
+    IssueRelationRemoveSerializer,
     IssueRelationResponseSerializer,
     IssueRelationSerializer,
     IssueSerializer,
@@ -83,7 +84,7 @@ from plane.utils.path_validator import sanitize_filename
 from plane.bgtasks.storage_metadata_task import get_asset_object_metadata
 from .base import BaseAPIView
 from plane.utils.host import base_host
-from plane.utils.issue_relation_mapper import get_actual_relation
+from plane.utils.issue_relation_mapper import get_actual_relation, get_inverse_relation
 from plane.bgtasks.webhook_task import model_activity
 from plane.app.permissions import ROLE
 from plane.utils.openapi import (
@@ -2540,3 +2541,128 @@ class IssueRelationListCreateAPIEndpoint(BaseAPIView):
             serializer_class(refetched_relations, many=True).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class IssueRelationRemoveAPIEndpoint(BaseAPIView):
+    """Issue Relation Remove Endpoint"""
+
+    serializer_class = IssueRelationRemoveSerializer
+    model = IssueRelation
+    permission_classes = [ProjectEntityPermission]
+
+    @work_item_relation_docs(
+        operation_id="remove_work_item_relation",
+        summary="Remove work item relation",
+        description="Remove exactly one relationship type and direction between two work items.",
+        parameters=[ISSUE_ID_PARAMETER],
+        request=IssueRelationRemoveSerializer,
+        responses={
+            204: OpenApiResponse(description="Work item relation removed successfully"),
+            400: INVALID_REQUEST_RESPONSE,
+            404: ISSUE_NOT_FOUND_RESPONSE,
+        },
+    )
+    def post(self, request, slug, project_id, issue_id):
+        """Remove one exact work item relation."""
+        serializer = IssueRelationRemoveSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        related_issue_id = serializer.validated_data["related_issue"]
+        relation_type = serializer.validated_data.get("relation_type")
+
+        if not Issue.objects.filter(
+            id=issue_id,
+            project_id=project_id,
+            workspace__slug=slug,
+        ).exists():
+            return Response(
+                {"detail": "Work item relation not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        pair_relations = IssueRelation.objects.filter(
+            workspace__slug=slug,
+        ).filter(
+            Q(issue_id=issue_id, related_issue_id=related_issue_id)
+            | Q(issue_id=related_issue_id, related_issue_id=issue_id)
+        )
+
+        # Older SDKs only send related_issue. Preserve that contract when the
+        # pair has one logical relationship, but refuse an ambiguous deletion.
+        if relation_type is None:
+            logical_relation_types = {
+                (
+                    relation.relation_type
+                    if relation.issue_id == issue_id or relation.relation_type in ["duplicate", "relates_to"]
+                    else get_inverse_relation(relation.relation_type)
+                )
+                for relation in pair_relations.only(
+                    "issue_id",
+                    "related_issue_id",
+                    "relation_type",
+                )
+            }
+            if len(logical_relation_types) > 1:
+                return Response(
+                    {
+                        "relation_type": [
+                            "Multiple relationships exist between these work items; "
+                            "specify the exact relation_type to remove."
+                        ]
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            relation_type = next(iter(logical_relation_types), None)
+
+        if relation_type is None:
+            return Response(
+                {"detail": "Work item relation not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        actual_relation = get_actual_relation(relation_type)
+        is_reverse = relation_type in ["blocking", "start_after", "finish_after"]
+        relations = pair_relations.filter(relation_type=actual_relation)
+        if relation_type not in ["duplicate", "relates_to"]:
+            relations = relations.filter(
+                issue_id=related_issue_id if is_reverse else issue_id,
+                related_issue_id=issue_id if is_reverse else related_issue_id,
+            )
+        relation = relations.select_related(
+            "issue__state",
+            "related_issue__state",
+        ).first()
+        if relation is None:
+            return Response(
+                {"detail": "Work item relation not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer_class = RelatedIssueSerializer if relation.issue_id != issue_id else IssueRelationSerializer
+        current_instance = json.dumps(serializer_class(relation).data, cls=DjangoJSONEncoder)
+        if relation_type in ["duplicate", "relates_to"]:
+            # Symmetric relationships may exist in both storage directions.
+            # They represent one logical relation, so remove both rows.
+            relations.delete()
+        else:
+            relation.delete()
+
+        issue_activity.delay(
+            type="issue_relation.activity.deleted",
+            requested_data=json.dumps(
+                {
+                    "related_issue": related_issue_id,
+                    "relation_type": relation_type,
+                },
+                cls=DjangoJSONEncoder,
+            ),
+            actor_id=str(request.user.id),
+            issue_id=str(issue_id),
+            project_id=str(project_id),
+            current_instance=current_instance,
+            epoch=int(timezone.now().timestamp()),
+            notification=True,
+            origin=base_host(request=request, is_app=True),
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -571,12 +571,18 @@ class IssueRelationRemoveSerializer(serializers.Serializer):
     """
     Serializer for removing issue relations.
 
-    Removes existing relationships between work items by specifying
-    the related issue ID.
+    Removes one existing relationship between work items by specifying
+    the related issue ID. New clients can also specify the requested
+    relation direction so only that exact relationship is removed.
     """
 
     related_issue = serializers.UUIDField(
         required=True, help_text="ID of the related work item to remove relation with"
+    )
+    relation_type = serializers.ChoiceField(
+        choices=IssueRelationCreateSerializer.RELATION_TYPE_CHOICES,
+        required=False,
+        help_text="Exact relationship type and direction to remove",
     )
 
 

@@ -10,6 +10,18 @@ from .project import (
     ProjectCreateSerializer,
     ProjectUpdateSerializer,
 )
+from .page import (
+    PageAPISerializer,
+    PageCreateAPISerializer,
+    WorkItemPageAPISerializer,
+    WorkItemPageCreateAPISerializer,
+)
+from .feature import (
+    ProjectFeatureSerializer,
+    ProjectFeatureUpdateSerializer,
+    WorkspaceFeatureSerializer,
+    WorkspaceFeatureUpdateSerializer,
+)
 from .issue import (
     IssueSerializer,
     LabelCreateUpdateSerializer,
@@ -26,6 +38,7 @@ from .issue import (
     IssueLinkCreateSerializer,
     IssueLinkUpdateSerializer,
     IssueRelationCreateSerializer,
+    IssueRelationRemoveSerializer,
     IssueRelationResponseSerializer,
     IssueRelationSerializer,
     RelatedIssueSerializer,

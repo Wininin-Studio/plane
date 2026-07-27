@@ -38,6 +38,7 @@ from .issue import (
     IssueLinkCreateSerializer,
     IssueLinkUpdateSerializer,
     IssueRelationCreateSerializer,
+    IssueRelationRemoveSerializer,
     IssueRelationResponseSerializer,
     IssueRelationSerializer,
     RelatedIssueSerializer,

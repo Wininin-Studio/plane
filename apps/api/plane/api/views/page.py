@@ -15,6 +15,7 @@ from plane.api.serializers import (
     WorkItemPageCreateAPISerializer,
 )
 from plane.app.permissions import ProjectEntityPermission, WorkspaceEntityPermission
+from plane.bgtasks.page_transaction_task import page_transaction
 from plane.db.models import Issue, Page, PageLog, Project, ProjectPage, Workspace
 from plane.utils.openapi import (
     CURSOR_PARAMETER,
@@ -91,6 +92,13 @@ class WorkspacePageListAPIEndpoint(BaseAPIView):
             created_by=request.user,
             updated_by=request.user,
             is_global=True,
+        )
+        transaction.on_commit(
+            lambda: page_transaction.delay(
+                new_description_html=page.description_html,
+                old_description_html=None,
+                page_id=page.id,
+            )
         )
         return Response(
             PageAPISerializer(page, context={"request": request}).data,
@@ -186,6 +194,13 @@ class ProjectPageListAPIEndpoint(BaseAPIView):
             page=page,
             created_by=request.user,
             updated_by=request.user,
+        )
+        transaction.on_commit(
+            lambda: page_transaction.delay(
+                new_description_html=page.description_html,
+                old_description_html=None,
+                page_id=page.id,
+            )
         )
         return Response(
             PageAPISerializer(page, context={"request": request}).data,
